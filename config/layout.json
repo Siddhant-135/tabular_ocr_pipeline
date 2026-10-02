@@ -1,0 +1,39 @@
+{
+  "defaults": {
+    "start_h": 0.13,
+    "row_h": 0.027,
+    "x_left": 0.02,
+    "x_right": 0.97,
+    "col2_x0": 0.4,
+    "col2_x1": 0.72,
+    "margin_factor": 4.0
+  },
+  "pages": {
+    "pages-1": {
+      "width": 1240,
+      "height": 1638,
+      "start_h": 218.2,
+      "row_h": 43.96,
+      "x_left": 142,
+      "x_right": 1215,
+      "col2_x0": 536,
+      "col2_x1": 904,
+      "n_rows": 31,
+      "margin_factor": 4.0,
+      "locked": false
+    },
+    "pages-2": {
+      "width": 1215,
+      "height": 1755,
+      "start_h": 238.1,
+      "row_h": 47.52,
+      "x_left": 20,
+      "x_right": 1145,
+      "col2_x0": 439,
+      "col2_x1": 827,
+      "n_rows": 31,
+      "margin_factor": 4.0,
+      "locked": false
+    }
+  }
+}
