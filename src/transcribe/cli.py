@@ -5,8 +5,7 @@
     uv run transcribe slice                # crops + overlays -> verification/<page>/
     uv run transcribe dictionary           # col-2 pass -> dictionary/ (then edit locations.json)
     uv run transcribe extract              # row pass + phone second read -> output/output-<n>.csv
-    uv run transcribe crosscheck           # flag phones one digit apart across all pages
-    uv run transcribe combine              # after manual review -> output/combined.csv
+    uv run transcribe crosscheck           # optional: flag likely OCR digit swaps across pages
 
 Common flags: --pages 1 2 (page numbers or file stems), --backend mlx|mock, --model <id>.
 """
@@ -14,34 +13,20 @@ Common flags: --pages 1 2 (page numbers or file stems), --backend mlx|mock, --mo
 import argparse
 import json
 
-from PIL import Image
-
-from transcribe.layout import DEFAULT_MARGIN_FACTOR, is_locked, load_layout, save_layout
-from transcribe.paths import LAYOUT_FILE, list_pages
+from transcribe.layout import DEFAULT_MARGIN_FACTOR
+from transcribe.paths import list_pages
 
 
 def cmd_calibrate(args):
-    from transcribe.calibrate import calibrate_page
+    from transcribe.pipeline import calibrate_pages
 
-    for path in list_pages(args.pages):
-        if is_locked(path.stem) and not args.force:
-            print(f"{path.stem}: locked, skipped")
-            continue
-        layout, report = calibrate_page(path, args.margin_factor)
-        save_layout(path.stem, layout)
-        print(f"{path.stem}: start_h={layout.start_h} row_h={layout.row_h} "
-              f"x=[{layout.x_left},{layout.x_right}] col2=[{layout.col2_x0},{layout.col2_x1}] {report}")
-    print(f"written to {LAYOUT_FILE}")
+    calibrate_pages(list_pages(args.pages), args.margin_factor, args.force)
 
 
 def cmd_slice(args):
-    from transcribe.slicing import slice_page
+    from transcribe.pipeline import slice_pages
 
-    for path in list_pages(args.pages):
-        with Image.open(path) as im:
-            w, h = im.size
-        counts = slice_page(path, load_layout(path.stem, w, h))
-        print(f"{path.stem}: {counts}")
+    slice_pages(list_pages(args.pages))
 
 
 def cmd_dictionary(args):
@@ -65,12 +50,6 @@ def cmd_crosscheck(args):
     crosscheck()
 
 
-def cmd_combine(args):
-    from transcribe.combine import combine
-
-    combine()
-
-
 def cmd_run(args):
     from transcribe.pipeline import run_all
 
@@ -81,7 +60,6 @@ def cmd_run(args):
         margin_factor=args.margin_factor,
         force_calibrate=args.force,
         skip_dictionary=args.skip_dictionary,
-        combine=args.combine,
     )
 
 
@@ -103,7 +81,6 @@ def main(argv=None):
     r.add_argument("--margin-factor", type=float, default=DEFAULT_MARGIN_FACTOR)
     r.add_argument("--force", action="store_true", help="re-calibrate locked pages")
     r.add_argument("--skip-dictionary", action="store_true", help="reuse dictionary/ from a prior run")
-    r.add_argument("--combine", action="store_true", help="also write output/combined.csv")
     c = add("calibrate", cmd_calibrate)
     c.add_argument("--margin-factor", type=float, default=DEFAULT_MARGIN_FACTOR)
     c.add_argument("--force", action="store_true", help="also overwrite locked pages")
@@ -112,7 +89,6 @@ def main(argv=None):
     e = add("extract", cmd_extract, vlm=True)
     e.add_argument("--workers", type=int, default=1, help="parallel pages (each loads the model)")
     add("crosscheck", cmd_crosscheck)
-    add("combine", cmd_combine)
 
     args = p.parse_args(argv)
     args.fn(args)

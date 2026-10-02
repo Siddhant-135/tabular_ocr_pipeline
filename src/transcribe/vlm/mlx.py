@@ -9,12 +9,19 @@ class MLXBackend:
     name = "mlx"
 
     def __init__(self, model: str = DEFAULT_MODEL):
+        import time
+
         from mlx_vlm import load
         from mlx_vlm.utils import load_config
 
+        from transcribe.progress import log
+
+        log(f"loading model {model} ...")
+        t = time.time()
         self.model_id = model
         self.model, self.processor = load(model)
         self.config = load_config(model)
+        log(f"model loaded in {time.time() - t:.1f}s")
 
     def generate(self, image: Path, prompt: str, max_tokens: int = 128) -> str:
         from mlx_vlm import generate

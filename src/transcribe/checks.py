@@ -26,7 +26,14 @@ def normalize_name(s) -> str:
 
 
 def normalize_phone(s) -> str:
-    return re.sub(r"[\s\-()]", "", _clean(s))
+    s = _clean(s)
+    if s.lower() in ("none", "null", "nan", "n/a", "-", "—"):
+        return NAN
+    return re.sub(r"[\s\-()]", "", s)
+
+
+def phone_missing(phone: str) -> bool:
+    return phone in ("", NAN)
 
 
 def normalize_location(s) -> str:
@@ -47,10 +54,15 @@ def location_kind(loc: str) -> str:
 
 
 def normalize_row(row: dict) -> dict:
+    raw_phone = row.get("phone")
+    if raw_phone is None:
+        phone = NAN
+    else:
+        phone = normalize_phone(raw_phone)
     return {
         "name": normalize_name(row.get("name")),
         "location": normalize_location(row.get("location")),
-        "phone": normalize_phone(row.get("phone")),
+        "phone": phone,
     }
 
 
@@ -61,6 +73,8 @@ def failed_fields(row: dict) -> list[str]:
         failed.append("name")
     if location_kind(row["location"]) == "invalid":
         failed.append("location")
-    if not PHONE_RE.match(row["phone"]):
+    if phone_missing(row["phone"]):
+        pass  # genuine blank on the page; name/location still extracted
+    elif not PHONE_RE.match(row["phone"]):
         failed.append("phone")
     return failed

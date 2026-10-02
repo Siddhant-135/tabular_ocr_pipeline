@@ -15,6 +15,8 @@ input/
 output/
 verification/
 dictionary/
+final_output/*
+!final_output/clipper.py
 
 # no pdfs
 *.pdf

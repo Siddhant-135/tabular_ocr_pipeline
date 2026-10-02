@@ -1,8 +1,8 @@
 """Near-duplicate phone check across all output/output-*.csv.
 
-The same people recur across pages. Two different phones that differ in exactly one digit
-are most likely one number misread once: the rarer one (or both, on a tie) is marked
-recheck=true with a note pointing at the other occurrence.
+Optional heuristic (not a fix): handwriting OCR often misreads one digit (4/9, 1/7) while
+name/location match. The same person can appear on multiple pages with two phones that differ
+in exactly one digit. Those rows get recheck=true and a note — a human decides which is right.
 """
 
 import csv
@@ -11,6 +11,7 @@ from itertools import combinations
 
 from transcribe.checks import PHONE_RE
 from transcribe.paths import OUTPUT_DIR, page_number
+from transcribe.progress import log
 
 
 def read_table(path) -> tuple[list[str], list[dict]]:
@@ -54,6 +55,7 @@ def crosscheck() -> int:
                     r["notes"] = "; ".join(x for x in (r.get("notes", ""), note) if x)
                     r["recheck"] = "true"
                     flagged += 1
+                    log(f"  {page_number(path.stem)}:{r['row']} {s} is {note}")
 
     for path, (fieldnames, rows) in tables.items():
         if "notes" not in fieldnames:
@@ -62,5 +64,6 @@ def crosscheck() -> int:
             w = csv.DictWriter(f, fieldnames=fieldnames)
             w.writeheader()
             w.writerows(rows)
-    print(f"crosscheck: {len(where)} distinct phones, {flagged} rows flagged as near-duplicates")
+    log(f"crosscheck: {len(files)} files, {len(where)} distinct phones, "
+        f"{flagged} rows flagged as near-duplicates")
     return flagged

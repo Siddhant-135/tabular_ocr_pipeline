@@ -66,8 +66,21 @@ def _runs(mask: np.ndarray) -> list[list[int]]:
     return runs
 
 
+def _valley(prof: np.ndarray, lo: int, hi: int, high_level: float) -> tuple[int, int]:
+    seg = prof[lo:hi]
+    i = int(np.argmin(seg))
+    floor = seg[i]
+    limit = floor + 0.15 * (high_level - floor)
+    a = b = i
+    while a > 0 and seg[a - 1] <= limit:
+        a -= 1
+    while b < len(seg) - 1 and seg[b + 1] <= limit:
+        b += 1
+    return lo + a, lo + b
+
+
 def fit_columns(gray: np.ndarray, y0: int, y1: int) -> dict[str, int] | None:
-    """Three heaviest ink clusters = name | location | phone. None if not found."""
+    """Three ink clusters, or two valleys inside one ink span (cream paper / bleed-through)."""
     w = gray.shape[1]
     prof = _smooth((gray[y0:y1] < INK_THRESHOLD).mean(0), 15)
     high = float(np.percentile(prof[int(0.05 * w) : int(0.95 * w)], 90))
@@ -78,18 +91,32 @@ def fit_columns(gray: np.ndarray, y0: int, y1: int) -> dict[str, int] | None:
             merged[-1][1] = r[1]
         else:
             merged.append(r)
-    # Clusters touching the border are scanner edge shadows or diary month tabs.
     inner = [r for r in merged if r[0] > 0.01 * w and r[1] < 0.99 * w]
-    clusters = sorted(sorted(inner, key=lambda r: -prof[r[0] : r[1]].sum())[:3])
-    if len(clusters) < 3:
+    if not inner and merged:
+        inner = [max(merged, key=lambda r: r[1] - r[0])]
+    if not inner:
         return None
-    (c1, _), (_, _), (c3_start, c3_end) = clusters
     pad = int(0.03 * w)
+
+    clusters = sorted(sorted(inner, key=lambda r: -prof[r[0] : r[1]].sum())[:3])
+    if len(clusters) >= 3:
+        (c1, _), (_, _), (c3_start, c3_end) = clusters
+        return {
+            "x_left": max(0, c1 - pad),
+            "x_right": min(w, c3_end + pad),
+            "col2_x0": clusters[0][1],
+            "col2_x1": c3_start,
+        }
+
+    s0, s1 = max(inner, key=lambda s: prof[s[0] : s[1]].sum())
+    span = s1 - s0
+    g1 = _valley(prof, s0 + int(0.28 * span), s0 + int(0.52 * span), high)
+    g2 = _valley(prof, s0 + int(0.52 * span), s0 + int(0.78 * span), high)
     return {
-        "x_left": max(0, c1 - pad),
-        "x_right": min(w, c3_end + pad),
-        "col2_x0": clusters[0][1],
-        "col2_x1": c3_start,
+        "x_left": max(0, s0 - pad),
+        "x_right": min(w, s1 + pad),
+        "col2_x0": g1[0],
+        "col2_x1": g2[1],
     }
 
 

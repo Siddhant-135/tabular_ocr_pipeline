@@ -37,9 +37,9 @@ def row_prompt(locations: list[str]) -> str:
         "1. name — a person's name, letters only (initials like 'A.C' allowed)\n"
         f"2. location — {LOCATION_HINT} Known locations: {known}. Prefer an exact entry "
         "from this list when the handwriting matches it; otherwise write what you read.\n"
-        "3. phone — exactly 10 digits.\n\n"
+        "3. phone — exactly 10 digits when written; use null if the phone column is blank.\n\n"
         'Reply with a single JSON object and nothing else: {"name": "...", "location": "...", '
-        '"phone": "..."}. Use null for a field you cannot read.'
+        '"phone": "..."}. Use null for a field you cannot read or that is not written on the page.'
     )
 
 
@@ -49,8 +49,8 @@ def phone_crop_prompt() -> str:
         "The image is a horizontal strip cut from a scanned handwritten diary page, centred on ONE "
         "handwritten row; ignore partial rows at the top/bottom edges and any printed text like "
         "'2025'. It shows a handwritten 10-digit Indian mobile phone number. Read it digit by "
-        "digit, carefully distinguishing 1/7, 4/9, 3/8, 5/6, 0/6. Reply with only the 10 digits, "
-        "nothing else."
+        "digit, carefully distinguishing 1/7, 4/9, 3/8, 5/6, 0/6. If no number is written, reply NONE. "
+        "Otherwise reply with only the 10 digits, nothing else."
     )
 
 

@@ -18,10 +18,11 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
-from transcribe.checks import FIELDS, NAN, PHONE_RE, failed_fields, normalize_phone, normalize_row
+from transcribe.checks import FIELDS, NAN, PHONE_RE, failed_fields, normalize_phone, normalize_row, phone_missing
 from transcribe.dictionary import LocationDictionary, load_dictionary
 from transcribe.layout import N_ROWS
 from transcribe.paths import COL3, OUTPUT_DIR, ROWS, output_csv, resolve_crop
+from transcribe.progress import Progress, log
 from transcribe.prompts import phone_crop_prompt, retry_prompt, row_prompt
 from transcribe.vlm import VLMBackend, get_backend
 
@@ -93,33 +94,51 @@ def read_row(backend: VLMBackend, page_id: str, i: int, dictionary: LocationDict
 
 
 def _phone_read(backend: VLMBackend, image, prompt: str) -> str:
-    p = normalize_phone(backend.generate(image, prompt, max_tokens=16))
+    raw = backend.generate(image, prompt, max_tokens=16).strip()
+    if raw.upper() in {"", "NONE", "NULL"}:
+        return NAN
+    p = normalize_phone(raw)
+    if phone_missing(p):
+        return NAN
     return p if PHONE_RE.match(p) else ""
 
 
 def verify_phone(backend: VLMBackend, page_id: str, i: int, row_phone: str) -> tuple[str, bool, str]:
-    """Return (phone, disputed, notes). Phone is NaN if no reading is a valid 10-digit number."""
-    row_phone = row_phone if PHONE_RE.match(row_phone) else ""
+    """Return (phone, disputed, notes). Missing phone -> NaN without recheck unless reads disagree."""
+    if phone_missing(row_phone):
+        row_phone = NAN
+    elif not PHONE_RE.match(row_phone):
+        row_phone = ""
+
     crop_phone = _phone_read(backend, resolve_crop(page_id, COL3, i), phone_crop_prompt())
-    if row_phone and row_phone == crop_phone:
+    if crop_phone == NAN and (row_phone == NAN or row_phone == ""):
+        return NAN, False, ""
+    if row_phone == crop_phone and row_phone not in ("", NAN):
         return row_phone, False, ""
-    notes = f"phone row={row_phone or 'invalid'} crop={crop_phone or 'invalid'}"
-    return crop_phone or row_phone or NAN, True, notes
+    if row_phone == NAN and PHONE_RE.match(crop_phone):
+        return crop_phone, True, f"phone row=missing crop={crop_phone}"
+    if crop_phone == NAN and PHONE_RE.match(row_phone):
+        return row_phone, True, f"phone row={row_phone} crop=missing"
+    notes = f"phone row={row_phone or 'missing'} crop={crop_phone if crop_phone != NAN else 'missing'}"
+    best = crop_phone if crop_phone not in ("", NAN) else (row_phone if PHONE_RE.match(row_phone) else NAN)
+    return best, True, notes
 
 
 def extract_page_with_backend(
     page_id: str,
     backend: VLMBackend,
     dictionary: LocationDictionary | None = None,
-    *,
-    progress: bool = False,
 ) -> dict:
     dictionary = dictionary or load_dictionary()
+    progress = Progress(f"extract {page_id}", N_ROWS)
     results = []
     for i in range(N_ROWS):
-        results.append(read_row(backend, page_id, i, dictionary))
-        if progress and (i + 1) % 5 == 0:
-            print(f"  {page_id}: row {i + 1}/{N_ROWS}", flush=True)
+        r = read_row(backend, page_id, i, dictionary)
+        results.append(r)
+        if r.recheck or r.checks_failed:
+            why = "; ".join(x for x in (r.notes, f"failed={','.join(r.checks_failed)}" if r.checks_failed else "") if x)
+            log(f"  {page_id} row {r.row}: recheck ({why or 'failed first pass, fixed on retry'})")
+        progress.step()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = output_csv(page_id)
@@ -143,6 +162,8 @@ def extract_page_with_backend(
         "locations": dict(Counter(r.location for r in results).most_common()),
     }
     path.with_suffix(".summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    log(f"extract {page_id} done in {progress.elapsed()}: {summary['ok_first_pass']} ok, "
+        f"{summary['recheck']} recheck, {summary['checks_failed']} checks_failed -> {path}")
     return summary
 
 
@@ -155,6 +176,11 @@ def extract_pages(page_ids: list[str], backend_name: str, model: str | None, wor
     small for local models (the 9B model at 8-bit is ~11 GB of unified memory)."""
     if workers <= 1:
         backend = get_backend(backend_name, model)
-        return [extract_page_with_backend(p, backend, progress=True) for p in page_ids]
+        summaries = []
+        for n, p in enumerate(page_ids, 1):
+            log(f"extract {p} ({n}/{len(page_ids)}) started")
+            summaries.append(extract_page_with_backend(p, backend))
+        return summaries
+    log(f"extract: {len(page_ids)} pages on {workers} workers")
     with ProcessPoolExecutor(max_workers=workers) as ex:
         return list(ex.map(extract_page, page_ids, [backend_name] * len(page_ids), [model] * len(page_ids)))

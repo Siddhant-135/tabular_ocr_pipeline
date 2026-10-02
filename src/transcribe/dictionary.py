@@ -27,6 +27,7 @@ from transcribe.paths import (
     page_number,
     resolve_crop,
 )
+from transcribe.progress import Progress, log
 from transcribe.prompts import col2_prompt
 from transcribe.vlm import VLMBackend
 
@@ -57,11 +58,15 @@ def build(backend: VLMBackend, page_ids: list[str]) -> Counter:
     DICTIONARY_DIR.mkdir(parents=True, exist_ok=True)
     prompt = col2_prompt()
     reads = []
-    for page_id in page_ids:
+    for n, page_id in enumerate(page_ids, 1):
+        progress = Progress(f"dictionary {page_id} ({n}/{len(page_ids)})", N_ROWS)
         for i in range(N_ROWS):
             raw = backend.generate(resolve_crop(page_id, COL2, i), prompt, max_tokens=16).strip()
             norm = "" if raw.upper() in {"", "NONE", "NULL"} else normalize_location(raw)
             reads.append((page_id, i + 1, raw, norm))
+            if not norm:
+                log(f"  {page_id} row {i + 1}: no location read (raw={raw!r})")
+            progress.step()
 
     with (DICTIONARY_DIR / "col2_reads.csv").open("w", newline="") as f:
         w = csv.writer(f)
@@ -87,11 +92,11 @@ def build(backend: VLMBackend, page_ids: list[str]) -> Counter:
         LOCATIONS_FILE.write_text(json.dumps({"locations": seed, "aliases": {}}, indent=2) + "\n")
 
     empty = sum(1 for *_, norm in reads if not norm)
-    print(f"col2 reads: {len(reads)}  empty: {empty}  unique values: {len(counts)}")
+    log(f"dictionary: {len(reads)} reads, {empty} empty, {len(counts)} unique values -> {CANDIDATES_FILE}")
     for value, n in counts.most_common():
-        print(f"  {n:4d}  {value}")
+        print(f"  {n:4d}  {value}", flush=True)
     known = load_dictionary()
     unknown = [v for v in counts if known.lookup(v) is None]
     if unknown:
-        print(f"not yet in {LOCATIONS_FILE.name}: {unknown}")
+        log(f"not yet in {LOCATIONS_FILE.name}: {unknown}")
     return counts
