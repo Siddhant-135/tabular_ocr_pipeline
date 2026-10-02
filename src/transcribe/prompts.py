@@ -43,6 +43,17 @@ def row_prompt(locations: list[str]) -> str:
     )
 
 
+def phone_crop_prompt() -> str:
+    # Kept short on purpose: the longer CENTER_BIAS preamble measurably hurt digit accuracy.
+    return (
+        "The image is a horizontal strip cut from a scanned handwritten diary page, centred on ONE "
+        "handwritten row; ignore partial rows at the top/bottom edges and any printed text like "
+        "'2025'. It shows a handwritten 10-digit Indian mobile phone number. Read it digit by "
+        "digit, carefully distinguishing 1/7, 4/9, 3/8, 5/6, 0/6. Reply with only the 10 digits, "
+        "nothing else."
+    )
+
+
 def retry_prompt(locations: list[str], previous: str, failed: list[str]) -> str:
     return (
         f"{row_prompt(locations)}\n\n"

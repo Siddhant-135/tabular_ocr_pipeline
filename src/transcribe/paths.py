@@ -16,9 +16,10 @@ CANDIDATES_FILE = DICTIONARY_DIR / "candidates.csv"
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
-# Crop kinds: full 3-column row strips, and column-2 (location) strips.
+# Crop kinds: full 3-column row strips, column-2 (location) strips, column-3 (phone) strips.
 ROWS = "rows"
 COL2 = "col2"
+COL3 = "col3"
 
 
 def list_pages(only: list[str] | None = None) -> list[Path]:

@@ -56,6 +56,11 @@ class PageLayout:
         y0, y1 = self._vertical_extent(i)
         return self.col2_x0, y0, self.col2_x1, y1
 
+    def col3_box(self, i: int) -> tuple[int, int, int, int]:
+        # Phones sometimes start left of the column boundary; overlap into the gap.
+        y0, y1 = self._vertical_extent(i)
+        return max(0, self.col2_x1 - round(0.03 * self.width)), y0, self.x_right, y1
+
     @classmethod
     def from_defaults(cls, width: int, height: int, fractions: dict | None = None) -> "PageLayout":
         f = {**DEFAULT_FRACTIONS, **(fractions or {})}

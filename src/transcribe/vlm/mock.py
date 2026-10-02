@@ -18,6 +18,8 @@ class MockBackend:
     def generate(self, image: Path, prompt: str, max_tokens: int = 128) -> str:
         m = re.search(r"row_(\d+)", image.name)
         row = int(m.group(1)) if m else 0
+        if '"phone"' not in prompt and "10 digits" in prompt:
+            return "98765432" + f"{row:02d}"
         if '"phone"' not in prompt:
             return ["Ph-11", "Sec49", "Vill", "Ph11", "MHL"][row % 5]
 

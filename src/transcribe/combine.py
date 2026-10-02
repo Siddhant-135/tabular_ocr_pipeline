@@ -3,6 +3,7 @@ with the page number on every line."""
 
 import csv
 
+from transcribe.crosscheck import read_table
 from transcribe.paths import OUTPUT_DIR, page_number
 
 
@@ -13,12 +14,12 @@ def combine() -> int:
     with out.open("w", newline="") as fo:
         writer = None
         for path in files:
-            with path.open(newline="") as fi:
-                for rec in csv.DictReader(fi):
-                    if writer is None:
-                        writer = csv.DictWriter(fo, fieldnames=["page", *rec.keys()])
-                        writer.writeheader()
-                    writer.writerow({"page": page_number(path.stem), **rec})
-                    n += 1
+            fieldnames, rows = read_table(path)
+            if writer is None:
+                writer = csv.DictWriter(fo, fieldnames=["page", *fieldnames], extrasaction="ignore")
+                writer.writeheader()
+            for rec in rows:
+                writer.writerow({"page": page_number(path.stem), **rec})
+                n += 1
     print(f"combined {len(files)} pages, {n} rows -> {out}")
     return n

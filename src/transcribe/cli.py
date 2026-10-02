@@ -1,9 +1,11 @@
 """Pipeline entry point.
 
+    uv run transcribe run                  # everything below in one go, for all of input/
     uv run transcribe calibrate            # suggest row/column geometry -> config/layout.json
     uv run transcribe slice                # crops + overlays -> verification/<page>/
     uv run transcribe dictionary           # col-2 pass -> dictionary/ (then edit locations.json)
-    uv run transcribe extract              # row pass -> output/output-<n>.csv
+    uv run transcribe extract              # row pass + phone second read -> output/output-<n>.csv
+    uv run transcribe crosscheck           # flag phones one digit apart across all pages
     uv run transcribe combine              # after manual review -> output/combined.csv
 
 Common flags: --pages 1 2 (page numbers or file stems), --backend mlx|mock, --model <id>.
@@ -57,10 +59,30 @@ def cmd_extract(args):
         print(json.dumps({k: v for k, v in s.items() if k != "locations"}))
 
 
+def cmd_crosscheck(args):
+    from transcribe.crosscheck import crosscheck
+
+    crosscheck()
+
+
 def cmd_combine(args):
     from transcribe.combine import combine
 
     combine()
+
+
+def cmd_run(args):
+    from transcribe.pipeline import run_all
+
+    run_all(
+        pages=args.pages,
+        backend=args.backend,
+        model=args.model,
+        margin_factor=args.margin_factor,
+        force_calibrate=args.force,
+        skip_dictionary=args.skip_dictionary,
+        combine=args.combine,
+    )
 
 
 def main(argv=None):
@@ -77,6 +99,11 @@ def main(argv=None):
         sp.set_defaults(fn=fn)
         return sp
 
+    r = add("run", cmd_run, vlm=True)
+    r.add_argument("--margin-factor", type=float, default=DEFAULT_MARGIN_FACTOR)
+    r.add_argument("--force", action="store_true", help="re-calibrate locked pages")
+    r.add_argument("--skip-dictionary", action="store_true", help="reuse dictionary/ from a prior run")
+    r.add_argument("--combine", action="store_true", help="also write output/combined.csv")
     c = add("calibrate", cmd_calibrate)
     c.add_argument("--margin-factor", type=float, default=DEFAULT_MARGIN_FACTOR)
     c.add_argument("--force", action="store_true", help="also overwrite locked pages")
@@ -84,6 +111,7 @@ def main(argv=None):
     add("dictionary", cmd_dictionary, vlm=True)
     e = add("extract", cmd_extract, vlm=True)
     e.add_argument("--workers", type=int, default=1, help="parallel pages (each loads the model)")
+    add("crosscheck", cmd_crosscheck)
     add("combine", cmd_combine)
 
     args = p.parse_args(argv)

@@ -1,9 +1,10 @@
-"""Cut each page into 31 row strips and 31 column-2 strips, plus a verification overlay.
+"""Cut each page into 31 row strips, 31 column-2 strips and 31 column-3 strips, plus an overlay.
 
 verification/<page>/
     overlay.png     page with red nominal row lines, green row x-extent, blue col-2 band
     rows/row_XX.png full-width row crops (with overlap margins) -> main VLM pass
     col2/row_XX.png location-column crops                     -> dictionary pass
+    col3/row_XX.png phone-column crops, upscaled              -> phone second read
 """
 
 from pathlib import Path
@@ -11,11 +12,14 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from transcribe.layout import PageLayout
-from transcribe.paths import COL2, MANUAL_DIR, ROWS, VERIFICATION_DIR, crop_dir, crop_name
+from transcribe.paths import COL2, COL3, MANUAL_DIR, ROWS, VERIFICATION_DIR, crop_dir, crop_name
 
 RED = (230, 0, 0)
 GREEN = (0, 170, 0)
 BLUE = (0, 90, 255)
+
+# Digits are small relative to a full row; the VLM misreads fewer of them when enlarged.
+COL3_SCALE = 2
 
 
 def slice_page(path: Path, layout: PageLayout) -> dict[str, int]:
@@ -23,13 +27,20 @@ def slice_page(path: Path, layout: PageLayout) -> dict[str, int]:
     img = Image.open(path).convert("RGB")
 
     counts = {}
-    for kind, box_fn in ((ROWS, layout.row_box), (COL2, layout.col2_box)):
+    for kind, box_fn, scale in (
+        (ROWS, layout.row_box, 1),
+        (COL2, layout.col2_box, 1),
+        (COL3, layout.col3_box, COL3_SCALE),
+    ):
         out = crop_dir(page_id, kind)
         out.mkdir(parents=True, exist_ok=True)
         for old in out.glob("row_*.png"):
             old.unlink()
         for i in range(layout.n_rows):
-            img.crop(box_fn(i)).save(out / crop_name(i))
+            crop = img.crop(box_fn(i))
+            if scale != 1:
+                crop = crop.resize((crop.width * scale, crop.height * scale), Image.LANCZOS)
+            crop.save(out / crop_name(i))
         counts[kind] = layout.n_rows
 
     draw_overlay(img, layout, page_id).save(VERIFICATION_DIR / page_id / "overlay.png")
@@ -58,4 +69,4 @@ def draw_overlay(img: Image.Image, layout: PageLayout, page_id: str) -> Image.Im
 
 
 def _has_manual(page_id: str, i: int) -> bool:
-    return any((MANUAL_DIR / page_id / kind / crop_name(i)).exists() for kind in (ROWS, COL2))
+    return any((MANUAL_DIR / page_id / kind / crop_name(i)).exists() for kind in (ROWS, COL2, COL3))
